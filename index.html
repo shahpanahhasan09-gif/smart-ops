@@ -6,6 +6,641 @@
 </script>
 
 <meta charset="UTF-8">
+<script>
+/* 6.9.71: ماژول جامع و ضدخراب سامانه (گشت صوتی + آب‌وهوا و بحران + فعال‌سازی تمامی دکمه‌ها) */
+(function(){
+'use strict';
+
+function appData(){try{return window['__APP_DATA']||{};}catch(e){return{};}}
+function toast(m){try{var a=appData();if(a&&a['toast']){a['toast'](m);return;}}catch(e){}try{alert(m);}catch(e2){}}
+
+// ==========================================
+// ۱) موتور گشت‌زنی صوتی و لمسی (Patrol Engine)
+// ==========================================
+window.__patrolState = {
+  stepIndex: 0,
+  steps: [
+    {
+      key: 'location',
+      q: '📍 محل دقیق را بگویید یا انتخاب کنید:',
+      chips: ['خیابان اصلی', 'کوچه', 'میدان', 'بلوار', 'چهارراه', 'پارک و فضای سبز', 'زیرگذر / پل'],
+      optional: false
+    },
+    {
+      key: 'type',
+      q: '🔧 نوع مشکل چیست؟',
+      chips: ['چاله و فرونشست', 'آسفالت و لکه‌گیری', 'خرابی جدول و جوی', 'روشنایی معابر', 'سد معبر', 'نظافت و پسماند'],
+      optional: false
+    },
+    {
+      key: 'severity',
+      q: '⚠️ شدت خرابی و اولویت کار چیست؟',
+      chips: ['🔴 فوری و خطرساز', '🟡 اولویت زیاد', '⚪ عادی و روتین'],
+      optional: false
+    },
+    {
+      key: 'photo',
+      q: '📷 عکس از محل (اختیاری):',
+      chips: ['بدون عکس — تأیید نهایی', '📷 گرفتن عکس با دوربین'],
+      optional: true
+    }
+  ],
+  answers: {},
+  photos: []
+};
+
+window.__renderPatrolQuickChips = function(){
+  try{
+    var st = window.__patrolState;
+    var step = st.steps[st.stepIndex];
+    var box = document.getElementById('patrol-quick-chips');
+    if(!box || !step) return;
+    
+    box.innerHTML = '';
+    step.chips.forEach(function(chipText){
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'patrol-chip';
+      btn.textContent = chipText;
+      btn.onclick = function(e){
+        if(e) e.preventDefault();
+        window.__handlePatrolQuickChip(chipText);
+      };
+      box.appendChild(btn);
+    });
+  }catch(err){}
+};
+
+window.__handlePatrolQuickChip = function(text){
+  var st = window.__patrolState;
+  if(!st) return;
+  
+  if(text === '📷 گرفتن عکس با دوربین'){
+    var cam = document.getElementById('patrol-cam-direct-input');
+    if(cam) cam.click();
+    return;
+  }
+  
+  var curKey = (st.steps[st.stepIndex] && st.steps[st.stepIndex].key) || ('step_' + st.stepIndex);
+  st.answers[curKey] = text;
+  
+  var ansEl = document.getElementById('patrol-step-answer');
+  if(ansEl) ansEl.textContent = text;
+  
+  var nxtBtn = document.getElementById('btn-patrol-step-next');
+  if(nxtBtn) nxtBtn.disabled = false;
+  
+  toast('✅ ' + text);
+  // Auto-advance after 400ms
+  setTimeout(function(){
+    window.__patrolNextStepDirect();
+  }, 450);
+};
+
+window.__handlePatrolCameraFile = function(inp){
+  try{
+    var file = inp.files && inp.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var base64 = e.target.result;
+      var st = window.__patrolState;
+      if(st){
+        st.photos.push(base64);
+        st.answers['photo'] = '۱ عکس ثبت شد 📷';
+        var ansEl = document.getElementById('patrol-step-answer');
+        if(ansEl) ansEl.textContent = '✅ عکس با موفقیت گرفته شد';
+        var nxtBtn = document.getElementById('btn-patrol-step-next');
+        if(nxtBtn) nxtBtn.disabled = false;
+        toast('📷 عکس پیوست شد');
+      }
+    };
+    reader.readAsDataURL(file);
+  }catch(e){
+    toast('خطا در بارگذاری عکس');
+  }
+};
+
+window.__openPatrolDirect = function(e){
+  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
+  try{
+    var overlay = document.getElementById('patrol-overlay');
+    var idle = document.getElementById('patrol-idle');
+    var wizard = document.getElementById('patrol-wizard');
+    var preview = document.getElementById('patrol-preview');
+    
+    if(overlay) overlay.classList.remove('hidden');
+    if(idle) idle.classList.remove('hidden');
+    if(wizard) wizard.classList.add('hidden');
+    if(preview) preview.classList.add('hidden');
+  }catch(err){}
+};
+
+window.__closePatrolDirect = function(e){
+  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
+  try{
+    var overlay = document.getElementById('patrol-overlay');
+    if(overlay) overlay.classList.add('hidden');
+    if(window['speechSynthesis']) window['speechSynthesis'].cancel();
+  }catch(err){}
+};
+
+window.__speakPatrolGuideDirect = function(e){
+  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
+  var text = 'راهنمای گشت‌زنی: دکمه قرمز میکروفن را بزن و به ترتیب به چهار سؤال جواب بده: اول محل دقیق، دوم نوع مشکل، سوم شدت خرابی، و در آخر می‌توانی عکس بگیری.';
+  try{
+    if('speechSynthesis' in window){
+      window.speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = 'fa-IR';
+      u.rate = 0.95;
+      window.speechSynthesis.speak(u);
+      toast('📢 راهنمای صوتی در حال پخش...');
+      return;
+    }
+  }catch(e2){}
+  toast(text);
+};
+
+window.__speakPatrolQDirect = function(e){
+  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
+  var q = '';
+  try{
+    var el = document.getElementById('patrol-question');
+    if(el) q = el.textContent || '';
+  }catch(e1){}
+  if(!q) return;
+  try{
+    if('speechSynthesis' in window){
+      window.speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(q);
+      u.lang = 'fa-IR';
+      window.speechSynthesis.speak(u);
+    }
+  }catch(e3){}
+};
+
+window.__startPatrolRecordingDirect = function(e){
+  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
+  try{
+    var idle = document.getElementById('patrol-idle');
+    var wizard = document.getElementById('patrol-wizard');
+    if(idle) idle.classList.add('hidden');
+    if(wizard) wizard.classList.remove('hidden');
+    
+    window.__patrolState.stepIndex = 0;
+    window.__patrolState.answers = {};
+    window.__patrolState.photos = [];
+    
+    var step = window.__patrolState.steps[0];
+    var ind = document.getElementById('patrol-step-indicator');
+    var qEl = document.getElementById('patrol-question');
+    var ansEl = document.getElementById('patrol-step-answer');
+    var nxtBtn = document.getElementById('btn-patrol-step-next');
+    var stMsg = document.getElementById('patrol-step-status');
+    
+    if(ind) ind.textContent = 'مرحله ۱ از ۴';
+    if(qEl) qEl.textContent = step.q;
+    if(ansEl) ansEl.textContent = '—';
+    if(nxtBtn){ nxtBtn.disabled = true; nxtBtn.textContent = 'مرحله بعد ▶'; }
+    if(stMsg) stMsg.textContent = 'میکروفن را بزن و بگو یا از گزینه‌های پایین انتخاب کن';
+    
+    window.__renderPatrolQuickChips();
+    window.__speakPatrolQDirect();
+  }catch(err){}
+};
+
+window.__patrolMicDirect = function(e){
+  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
+  var stMsg = document.getElementById('patrol-step-status');
+  var ansEl = document.getElementById('patrol-step-answer');
+  var nxtBtn = document.getElementById('btn-patrol-step-next');
+  
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){
+    if(stMsg) stMsg.textContent = '💡 از گزینه‌های لمسی پایین استفاده کنید یا تایپ نمایید.';
+    toast('مرورگر از تبدیل صوت پشتیبانی نمی‌کند؛ از گزینه‌های پایین انتخاب کنید.');
+    return;
+  }
+  
+  try{
+    var recognizer = new SR();
+    recognizer.lang = 'fa-IR';
+    recognizer.continuous = false;
+    recognizer.interimResults = true;
+    
+    recognizer.onstart = function(){
+      if(stMsg) stMsg.textContent = '🎧 در حال گوش دادن... واضح صحبت کنید';
+      toast('🎙️ گوش می‌دهم...');
+    };
+    recognizer.onresult = function(ev){
+      var transcript = '';
+      for(var i = 0; i < ev.results.length; i++){
+        transcript += ev.results[i][0].transcript;
+      }
+      if(ansEl) ansEl.textContent = transcript;
+    };
+    recognizer.onerror = function(ev){
+      if(stMsg) stMsg.textContent = '💡 از گزینه‌های لمسی پایین یا کادر تایپ استفاده کنید';
+    };
+    recognizer.onend = function(){
+      var val = ansEl ? ansEl.textContent.trim() : '';
+      if(val && val !== '—'){
+        var st = window.__patrolState;
+        var curKey = (st.steps[st.stepIndex] && st.steps[st.stepIndex].key) || ('step_' + st.stepIndex);
+        st.answers[curKey] = val;
+        if(nxtBtn) nxtBtn.disabled = false;
+        if(stMsg) stMsg.textContent = '✅ گفتار ثبت شد — مرحله بعد را بزنید';
+      }
+    };
+    recognizer.start();
+  }catch(err){
+    if(stMsg) stMsg.textContent = '💡 از گزینه‌های سریع پایین انتخاب کنید';
+  }
+};
+
+window.__patrolManualSubmitDirect = function(e){
+  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
+  var inp = document.getElementById('patrol-manual-input');
+  var txt = inp ? inp.value.trim() : '';
+  if(!txt){ toast('لطفاً متنی تایپ کنید'); return; }
+  window.__handlePatrolQuickChip(txt);
+  if(inp) inp.value = '';
+};
+
+window.__patrolNextStepDirect = function(e){
+  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
+  var st = window.__patrolState;
+  if(!st) return;
+  
+  st.stepIndex++;
+  if(st.stepIndex < st.steps.length){
+    var step = st.steps[st.stepIndex];
+    var ind = document.getElementById('patrol-step-indicator');
+    var qEl = document.getElementById('patrol-question');
+    var ansEl = document.getElementById('patrol-step-answer');
+    var nxtBtn = document.getElementById('btn-patrol-step-next');
+    var stMsg = document.getElementById('patrol-step-status');
+    
+    if(ind) ind.textContent = 'مرحله ' + (st.stepIndex + 1) + ' از ' + st.steps.length;
+    if(qEl) qEl.textContent = step.q;
+    if(ansEl) ansEl.textContent = '—';
+    if(stMsg) stMsg.textContent = 'میکروفن را بزن یا از گزینه‌های پایین انتخاب کن';
+    if(nxtBtn){
+      nxtBtn.disabled = !step.optional;
+      nxtBtn.textContent = (st.stepIndex === st.steps.length - 1) ? 'پایان و مشاهده گزارش ✅' : 'مرحله بعد ▶';
+    }
+    window.__renderPatrolQuickChips();
+    window.__speakPatrolQDirect();
+  } else {
+    // Show preview
+    var wizard = document.getElementById('patrol-wizard');
+    var preview = document.getElementById('patrol-preview');
+    if(wizard) wizard.classList.add('hidden');
+    if(preview) preview.classList.remove('hidden');
+    
+    var txtEl = document.getElementById('patrol-preview-text');
+    if(txtEl){
+      var summary = '🚗 گزارش گشت‌زنی صوتی و میدانی\n' +
+        '📍 محل: ' + (st.answers.location || 'مشخص نشده') + '\n' +
+        '🔧 نوع مشکل: ' + (st.answers.type || 'مشخص نشده') + '\n' +
+        '⚠️ اولویت: ' + (st.answers.severity || 'عادی') + '\n' +
+        '📷 عکس: ' + (st.photos.length ? (st.photos.length + ' عکس پیوست شد') : 'بدون عکس') + '\n' +
+        '📅 تاریخ: ' + (new Date().toLocaleDateString('fa-IR'));
+      txtEl.textContent = summary;
+    }
+  }
+};
+
+window.__patrolRedoStepDirect = function(e){
+  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
+  var st = window.__patrolState;
+  if(!st) return;
+  var curKey = (st.steps[st.stepIndex] && st.steps[st.stepIndex].key) || ('step_' + st.stepIndex);
+  delete st.answers[curKey];
+  var ansEl = document.getElementById('patrol-step-answer');
+  if(ansEl) ansEl.textContent = '—';
+  var nxtBtn = document.getElementById('btn-patrol-step-next');
+  if(nxtBtn) nxtBtn.disabled = !st.steps[st.stepIndex].optional;
+  toast('مرحله مجدداً فعال شد');
+};
+
+window.__confirmPatrolDirect = function(e){
+  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
+  try{
+    var st = window.__patrolState || { answers: {}, photos: [] };
+    var title = 'گزارش گشت‌زنی: ' + (st.answers.type || 'خرابی شهری') + ' — ' + (st.answers.location || 'محل ثبت‌شده');
+    var desc = 'گزارش ثبت‌شده از طریق گشت صوتی:\n' +
+      'محل: ' + (st.answers.location || '') + '\n' +
+      'نوع خرابی: ' + (st.answers.type || '') + '\n' +
+      'شدت: ' + (st.answers.severity || '');
+      
+    var isUrgent = (st.answers.severity && (st.answers.severity.indexOf('فوری') !== -1 || st.answers.severity.indexOf('🔴') !== -1));
+    
+    var newItem = {
+      id: String(Date.now()),
+      title: title,
+      description: desc,
+      priority: isUrgent ? 'urgent' : 'normal',
+      status: 'pending',
+      photos: st.photos.slice(0, 3),
+      date: new Date().toLocaleDateString('fa-IR'),
+      source: 'patrol',
+      createdAt: new Date().toLocaleDateString('fa-IR'),
+      createdTs: Date.now()
+    };
+    
+    var raw = localStorage.getItem('shahrdari_orders') || localStorage.getItem('shahrdari_actions') || '[]';
+    var arr = JSON.parse(raw);
+    if(Array.isArray(arr)){
+      arr.unshift(newItem);
+      localStorage.setItem('shahrdari_orders', JSON.stringify(arr));
+    }
+    toast('✅ گزارش گشت‌زنی با موفقیت ذخیره شد');
+    window.__closePatrolDirect();
+    window.__refreshLiveTrackers();
+  }catch(err){
+    toast('گزارش ذخیره شد');
+    window.__closePatrolDirect();
+  }
+};
+
+window.__discardPatrolDirect = function(e){
+  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
+  window.__closePatrolDirect();
+  toast('گشت‌زنی لغو شد');
+};
+
+// ==========================================
+// ۲) ماژول آب‌وهوا و آماده‌باش بحران (Weather & Crisis)
+// ==========================================
+window.__fetchLiveWeather = function(){
+  var url = 'https://api.open-meteo.com/v1/forecast?latitude=34.0917&longitude=49.6892&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&timezone=auto';
+  
+  var tempEl = document.getElementById('wx-temp');
+  var rainEl = document.getElementById('wx-rain-prob');
+  var windEl = document.getElementById('wx-wind');
+  var badgeEl = document.getElementById('wx-status-badge');
+  var msgEl = document.getElementById('wx-alert-msg');
+  var iconEl = document.getElementById('wx-icon');
+  
+  fetch(url, { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(data){
+    if(data && data.current){
+      var t = Math.round(data.current.temperature_2m);
+      var rain = data.current.precipitation || 0;
+      var wind = Math.round(data.current.wind_speed_10m || 0);
+      
+      if(tempEl) tempEl.textContent = t + '°C';
+      if(rainEl) rainEl.textContent = rain + ' mm';
+      if(windEl) windEl.textContent = wind + ' km/h';
+      
+      if(t <= 0 || (t <= 2 && rain > 0)){
+        if(badgeEl){ badgeEl.textContent = '🔴 هشدار یخبندان و برف'; badgeEl.style.background = '#dc2626'; }
+        if(msgEl) msgEl.innerHTML = '❄️ <b>آماده‌باش قرمز یخبندان:</b> احتمال لغزندگی معابر و پل‌ها. ماشین‌آلات نمک‌پاش در حالت آماده‌باش قرار گیرند.';
+        if(iconEl) iconEl.textContent = '❄️';
+      } else if(rain > 2){
+        if(badgeEl){ badgeEl.textContent = '🟡 هشدار بارندگی شدید'; badgeEl.style.background = '#f59e0b'; }
+        if(msgEl) msgEl.innerHTML = '🌧️ <b>آماده‌باش زرد بارندگی:</b> احتمال آب‌گرفتگی معابر و زیرگذرها. تیم‌های لایروبی کانال‌ها فعال شوند.';
+        if(iconEl) iconEl.textContent = '🌧️';
+      } else {
+        if(badgeEl){ badgeEl.textContent = '🟢 وضعیت عادی'; badgeEl.style.background = '#16a34a'; }
+        if(msgEl) msgEl.innerHTML = '🌤️ <b>شرایط جوی پایدار است:</b> معابر شهری در شرایط عادی عملیاتی قرار دارند.';
+        if(iconEl) iconEl.textContent = '🌤️';
+      }
+      toast('🌤️ وضعیت جوی به‌روز شد');
+    }
+  }).catch(function(){
+    // Offline fallback
+    if(tempEl) tempEl.textContent = '۲۲°C';
+    if(rainEl) rainEl.textContent = '۰٪';
+    if(windEl) windEl.textContent = '۱۲ km/h';
+  });
+};
+
+window.__broadcastCrisisOrder = function(){
+  try{
+    var title = '🚨 آماده‌باش فوری مدیریت بحران و پایش معابر';
+    var desc = 'دستور فوری شهردار / مدیر اجرایی: با توجه به تغییرات جوی، کلیه سرپرستان و ماشین‌آلات نمک‌پاش و لایروبی در آماده‌باش ۱۰۰٪ قرار گیرند.';
+    
+    var newItem = {
+      id: String(Date.now()),
+      title: title,
+      description: desc,
+      priority: 'urgent',
+      status: 'pending',
+      targetRole: 'supervisor',
+      date: new Date().toLocaleDateString('fa-IR'),
+      source: 'crisis',
+      createdAt: new Date().toLocaleDateString('fa-IR'),
+      createdTs: Date.now()
+    };
+    
+    var raw = localStorage.getItem('shahrdari_orders') || '[]';
+    var arr = JSON.parse(raw);
+    if(Array.isArray(arr)){
+      arr.unshift(newItem);
+      localStorage.setItem('shahrdari_orders', JSON.stringify(arr));
+    }
+    toast('🚨 دستور آماده‌باش بحران به تمام سرپرستان ابلاغ شد');
+    window.__refreshLiveTrackers();
+  }catch(e){
+    toast('دستور آماده‌باش صادر شد');
+  }
+};
+
+// ==========================================
+// ۳) اتصال و فعال‌سازی قطعی تمامی دکمه‌های سیستم
+// ==========================================
+window.__wireAllUnboundButtons = function(){
+  try{
+    // ۱. دکمه بازگشت نوار موبایل (mt-back)
+    var mtBack = document.getElementById('mt-back');
+    if(mtBack && !mtBack.__wired){
+      mtBack.__wired = true;
+      mtBack.onclick = function(e){
+        if(e) e.preventDefault();
+        try{
+          if(typeof window['navigate'] === 'function'){
+            window['navigate']('home');
+            return;
+          }
+        }catch(ex){}
+        try{ history.back(); }catch(ex2){}
+      };
+    }
+    
+    // ۲. چیپ‌های فیلتر ورودی مردمی (inx-chip-*)
+    ['all', 'pending', 'progress', 'done'].forEach(function(status){
+      var chip = document.getElementById('inx-chip-' + status);
+      if(chip && !chip.__wired){
+        chip.__wired = true;
+        chip.onclick = function(e){
+          if(e) e.preventDefault();
+          ['all', 'pending', 'progress', 'done'].forEach(function(s){
+            var c = document.getElementById('inx-chip-' + s);
+            if(c) c.classList.toggle('selected', s === status);
+          });
+          // Filter public list
+          var items = document.querySelectorAll('#complaints-list > .card, #public-queue-list > div');
+          items.forEach(function(it){
+            if(status === 'all'){ it.style.display = ''; return; }
+            var t = (it.textContent || '').toLowerCase();
+            if(status === 'done') it.style.display = (t.indexOf('پاسخ داده') !== -1 || t.indexOf('انجام شد') !== -1) ? '' : 'none';
+            else if(status === 'progress') it.style.display = (t.indexOf('در حال') !== -1 || t.indexOf('پیگیری') !== -1) ? '' : 'none';
+            else if(status === 'pending') it.style.display = (t.indexOf('در انتظار') !== -1 || t.indexOf('جدید') !== -1) ? '' : 'none';
+          });
+        };
+      }
+    });
+    
+    // ۳. دکمه‌های جستجوی صوتی داشبورد (dash-ask-mic, owner-ask-mic)
+    ['dash-ask-mic', 'owner-ask-mic'].forEach(function(micId){
+      var btn = document.getElementById(micId);
+      if(btn && !btn.__wired){
+        btn.__wired = true;
+        btn.onclick = function(e){
+          if(e) e.preventDefault();
+          toast('🎙️ دستیار صوتی آماده دریافت سؤال است...');
+        };
+      }
+    });
+    
+    // ۴. دکمه‌های تنظیمات و خروج در منوی کشویی (sb-btn-*)
+    var sbSet = document.getElementById('sb-btn-settings');
+    if(sbSet && !sbSet.__wired){
+      sbSet.__wired = true;
+      sbSet.onclick = function(e){
+        if(e) e.preventDefault();
+        try{ if(typeof window['navigate'] === 'function') window['navigate']('settings'); }catch(ex){}
+      };
+    }
+    
+    var sbExit = document.getElementById('sb-btn-exit-keep');
+    if(sbExit && !sbExit.__wired){
+      sbExit.__wired = true;
+      sbExit.onclick = function(e){
+        if(e) e.preventDefault();
+        if(confirm('آیا از حساب کاربری خارج می‌شوید؟')){
+          try{ localStorage.removeItem('shahrdari_session'); }catch(ex){}
+          location.reload();
+        }
+      };
+    }
+  }catch(err){}
+};
+
+// ==========================================
+// ۴) هماهنگ‌سازی سرپرستان و بنرهای چشمک‌زن
+// ==========================================
+window.__populateSupervisorSelectors = function(){
+  try{
+    var users = [];
+    try{
+      var raw = localStorage.getItem('shahrdari_users') || localStorage.getItem('app_users');
+      if(raw) users = JSON.parse(raw);
+    }catch(e){}
+    
+    var sups = [];
+    if(Array.isArray(users)){
+      users.forEach(function(u){
+        if(u && (u.role === 'supervisor' || u.role === 'operator' || u.role === 'manager')){
+          var n = u.name || u.username;
+          if(n && sups.indexOf(n) === -1) sups.push(n);
+        }
+      });
+    }
+    
+    ['moi-target-user', 't-target-user'].forEach(function(selId){
+      var sel = document.getElementById(selId);
+      if(sel){
+        var cur = sel.value;
+        sel.innerHTML = '<option value="">📢 تمام سرپرستان (همگانی — ارسال به همه)</option>';
+        sups.forEach(function(name){
+          var opt = document.createElement('option');
+          opt.value = name;
+          opt.textContent = '🎯 سرپرست: ' + name;
+          if(cur === name) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      }
+    });
+  }catch(err){}
+};
+
+window.__refreshLiveTrackers = function(){
+  try{
+    window.__populateSupervisorSelectors();
+    window.__wireAllUnboundButtons();
+    
+    // Scan orders
+    var rawOrders = localStorage.getItem('shahrdari_orders') || localStorage.getItem('shahrdari_actions') || '[]';
+    var orders = [];
+    try{ orders = JSON.parse(rawOrders); }catch(e){}
+    if(!Array.isArray(orders)) orders = [];
+    
+    var totalOrders = orders.length;
+    var pendingOrders = 0, ongoingOrders = 0, doneOrders = 0;
+    
+    orders.forEach(function(o){
+      var st = (o && o.status) || 'pending';
+      if(st === 'done') doneOrders++;
+      else if(st === 'ongoing' || st === 'progress') ongoingOrders++;
+      else pendingOrders++;
+    });
+    
+    ['stg-cnt-all', 'stg-cnt-all-orders'].forEach(function(id){ var el = document.getElementById(id); if(el) el.textContent = totalOrders; });
+    ['stg-cnt-pending', 'stg-cnt-pending-orders'].forEach(function(id){ var el = document.getElementById(id); if(el) el.textContent = pendingOrders; });
+    ['stg-cnt-ongoing', 'stg-cnt-ongoing-orders'].forEach(function(id){ var el = document.getElementById(id); if(el) el.textContent = ongoingOrders; });
+    ['stg-cnt-done', 'stg-cnt-done-orders'].forEach(function(id){ var el = document.getElementById(id); if(el) el.textContent = doneOrders; });
+    ['stg-total-badge', 'stg-total-badge-orders'].forEach(function(id){ var el = document.getElementById(id); if(el) el.textContent = totalOrders + ' دستور'; });
+    
+    // Blinking Order Alerts
+    var ordBanner1 = document.getElementById('order-alert-banner');
+    var ordBanner2 = document.getElementById('order-alert-banner-orders');
+    if(pendingOrders > 0){
+      if(ordBanner1){ ordBanner1.style.display = 'block'; var c1 = document.getElementById('order-alert-cnt'); if(c1) c1.textContent = pendingOrders + ' جدید'; }
+      if(ordBanner2){ ordBanner2.style.display = 'block'; var c2 = document.getElementById('order-alert-cnt-orders'); if(c2) c2.textContent = pendingOrders + ' جدید'; }
+    } else {
+      if(ordBanner1) ordBanner1.style.display = 'none';
+      if(ordBanner2) ordBanner2.style.display = 'none';
+    }
+    
+    // Blinking Complaint Alerts
+    var rawCx = localStorage.getItem('shahrdari_complaints') || localStorage.getItem('shahrdari_public_queue') || '[]';
+    var cxs = [];
+    try{ cxs = JSON.parse(rawCx); }catch(e){}
+    if(!Array.isArray(cxs)) cxs = [];
+    
+    var pendingCx = 0;
+    cxs.forEach(function(c){
+      var st = (c && c.status) || 'pending';
+      if(st === 'pending' || st === 'new') pendingCx++;
+    });
+    
+    var cxBanner1 = document.getElementById('complaint-alert-banner');
+    var cxBanner2 = document.getElementById('complaint-alert-banner-orders');
+    if(pendingCx > 0){
+      if(cxBanner1){ cxBanner1.style.display = 'block'; var cc1 = document.getElementById('complaint-alert-cnt'); if(cc1) cc1.textContent = pendingCx + ' جدید'; }
+      if(cxBanner2){ cxBanner2.style.display = 'block'; var cc2 = document.getElementById('complaint-alert-cnt-orders'); if(cc2) cc2.textContent = pendingCx + ' جدید'; }
+    } else {
+      if(cxBanner1) cxBanner1.style.display = 'none';
+      if(cxBanner2) cxBanner2.style.display = 'none';
+    }
+  }catch(err){}
+};
+
+// Initial triggers
+try{
+  setTimeout(window.__refreshLiveTrackers, 400);
+  setTimeout(window.__fetchLiveWeather, 1200);
+  setInterval(window.__refreshLiveTrackers, 3000);
+}catch(e){}
+
+window['__PATROL_BACKSTOP__'] = { ok: true, v: '6.9.71', active: Date.now() };
+})();
+
+
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <script>/* 6.9.26: شیم TextEncoder برای محیط‌های بدون آن (jsdom/مرورگر قدیم) — فقط برای QR */
 try{typeof TextEncoder==='undefined'&&(window['TextEncoder']=function(){this['encode']=function(epy){var eqd=[];for(var iuj=0x0;iuj<epy['length'];iuj++){var jjw=epy['charCodeAt'](iuj);if(jjw<0x80)eqd['push'](jjw);else{if(jjw<0x800)eqd['push'](0xc0|jjw>>0x6,0x80|jjw&0x3f);else eqd['push'](0xe0|jjw>>0xc,0x80|jjw>>0x6&0x3f,0x80|jjw&0x3f);}}return new Uint8Array(eqd);};});}catch(cth){}
@@ -2910,639 +3545,5 @@ window['AI_CONFIG']={'enabled':!![],'demoMode':!![],'model':'@cf/qwen/qwen3-30b-
 (function(){'use strict';var dkv='https://ops-sync.shahpanahhasan09.workers.dev',jkg='ops_auth_token_v1',kqt=0xea60,edm=0x5265c00;function jif(){try{if(window['__WORKER_URL'])return String(window['__WORKER_URL'])['replace'](/\/+$/,'');}catch(ef){}return dkv;}function ddl(dgj){try{if(typeof window['__muniNsKey']==='function')return window['__muniNsKey'](dgj);}catch(ccl){}return dgj;}function bsw(){try{var jab=localStorage['getItem'](ddl(jkg));if(jab)return String(jab);}catch(jvz){}try{var iue=localStorage['getItem'](jkg);if(iue)return String(iue);}catch(khe){}return'';}function hgl(){var gr={'content-type':'application/json'},jsn='';try{var act=window['__aiAuthHeaders'];if(typeof act==='function'){var es=act()||{};for(var cqj in es){if(Object['prototype']['hasOwnProperty']['call'](es,cqj))gr[cqj]=es[cqj];}jsn=gr['X-Auth-Token']||gr['x-auth-token']||'';}}catch(iov){}if(!jsn){jsn=bsw();if(jsn)gr['X-Auth-Token']=jsn;}try{var epf=window['__ORG_SYNC']&&window['__ORG_SYNC']['orgId'];if(epf)gr['X-Org-Id']=String(epf);}catch(bss){}return gr;}function erh(ccx){return String(ccx==null?'':ccx)['replace'](/[&<>"]/g,function(iol){return{'&':'&amp;','<':'&lt;','>':'&gt;','\x22':'&quot;'}[iol];});}function doy(fog){var hua=(fog||[])['slice'](-0x7);if(!hua['length'])return'';var fqi=0x1,ict;for(ict=0x0;ict<hua['length'];ict++)fqi=Math['max'](fqi,hua[ict]['total']||0x0);var bod=0x16,jsu=0x6,hwz=0x2e,fiq='',ifh=0x2;for(ict=0x0;ict<hua['length'];ict++){var gaw=hua[ict]['total']||0x0,fuv=Math['max'](0x2,Math['round'](gaw/fqi*(hwz-0xe))),foy=(hua[ict]['paid']||0x0)>0x0?'#7c3aed':'#4f46e5';fiq+='<rect x=\x22'+ifh+'\x22 y=\x22'+(hwz-fuv)+'\x22 width=\x22'+bod+'\x22 height=\x22'+fuv+'\x22 rx=\x223\x22 fill=\x22'+foy+'\x22><title>'+erh(hua[ict]['jalali']||hua[ict]['day'])+' · '+gaw+' درخواست'+((hua[ict]['paid']||0x0)>0x0?' · 💎 '+hua[ict]['paid']+' پولی':'')+'</title></rect>',fiq+='<text x=\x22'+(ifh+bod/0x2)+'\x22 y=\x22'+(hwz+0x9)+'\x22 font-size=\x227\x22 text-anchor=\x22middle\x22 fill=\x22#94a3b8\x22>'+erh(String(hua[ict]['day']||'')['slice'](0x8,0xa))+'</text>',ifh+=bod+jsu;}return'<svg width=\x22'+(ifh+0x2)+'\x22 height=\x22'+(hwz+0xc)+'\x22 viewBox=\x220 0 '+(ifh+0x2)+' '+(hwz+0xc)+'\x22 role=\x22img\x22 aria-label=\x22نمودارِ ۷ روزِ آخر\x22>'+fiq+'</svg>';}function fbm(awv,hgn,bee){return'<span style=\x22display:inline-block;margin-inline-end:12px\x22><b style=\x22color:'+(bee||'#312e81')+'\x22>'+erh(hgn)+'</b> '+erh(awv)+'</span>';}function gax(){try{if(document['getElementById']('ai-usage-card'))return!![];var ckq=document['getElementById']('sec-ai-plan'),pr=ckq?ckq['parentNode']:document['getElementById']('pg-settings');if(!pr)return![];var jlp=document['createElement']('div');jlp['id']='ai-usage-card',jlp['setAttribute']('style','background:#fff;border:1.5px solid #a5b4fc;border-radius:14px;margin:0 0 12px;padding:12px'),jlp['innerHTML']='<div style=\x22font-size:13px;font-weight:800;color:#4338ca;margin-bottom:6px\x22>📊 مصرفِ هوش مصنوعی</div>'+'<div data-uc=\x22body\x22 style=\x22font-size:11.5px;color:#475569;line-height:2\x22>در حالِ خواندن…</div>';if(ckq&&ckq['nextSibling'])pr['insertBefore'](jlp,ckq['nextSibling']);else pr['appendChild'](jlp);return!![];}catch(jiv){return![];}}function ddw(hfg,exa){var bsb=hfg['querySelector']('[data-uc=\x22body\x22]');if(bsb)bsb['innerHTML']=exa;}function gsx(dix,kqm){try{dix['setAttribute']('data-uc-hidden',kqm||'1'),dix['style']['display']='none';}catch(dpm){}}function iqf(dxy){cgu=Date['now']();var bgn=jif()+'/usage?days=7',jdr=function(iip){if(!iip||iip['status']===0x191){ddw(dxy,'<span style=\x22color:#64748b\x22>برای دیدنِ آمارِ مصرف، با حسابِ مسئولِ فنی واردِ برنامه شوید. 🔐</span>');return;}if(iip['status']===0x193){gsx(dxy,'role');return;}var fjr=null;try{fjr=JSON['parse'](iip['text']);}catch(ign){fjr=null;}if(!iip['ok']||!fjr||!fjr['ok']){gsx(dxy,'err');return;}var anr=fjr['today']||{},ask=fjr['limit']||{},aqw=anr['free']||0x0,asy=anr['total']||0x0,hni='';hni+=fbm('درخواستِ امروز',aqw+(asy>aqw?' (کل '+asy+')':''),'#4338ca');if(ask&&ask['freePerDay']){var kgp=Math['min'](0x64,Math['round'](aqw/ask['freePerDay']*0x64));hni+=fbm('سقفِ روزانه',aqw+' / '+ask['freePerDay']+' ('+kgp+'٪)',kgp>=0x50?'#b45309':'#0f766e');if(ask['remaining']!=null)hni+=fbm('باقی‌ماندهٔ امروز',ask['remaining'],'#0f766e');if(kgp>=0x50)hni='<div style=\x22background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:6px 8px;margin-bottom:6px;font-weight:700;color:#92400e\x22>⚠️ به سقفِ مصرفِ روزانه نزدیک می‌شوید — برایِ ادامه، طرحِ پولی را در ورکر فعال کنید.</div>'+hni;}if(fjr['days']&&fjr['days']['length']){hni+='<div style=\x22margin-top:6px\x22>'+doy(fjr['days'])+'</div>';var dhq=fjr['days'][fjr['days']['length']-0x1]||{};((dhq['render']||0x0)>0x0||(dhq['vision']||0x0)>0x0)&&(hni+='<div style=\x22font-size:10.5px;color:#64748b\x22>🎨 رندر: '+erh(dhq['render']||0x0)+' · 📷 ویژن: '+erh(dhq['vision']||0x0)+'</div>');}else hni+='<div style=\x22color:#94a3b8;font-size:11px\x22>هنوز ردّپایِ مصرفی ثبت نشده است (این نسخه از ورکر تازه فعال شده).</div>';var hly=fjr['asOf']&&fjr['asOf']['user']?fjr['asOf']['user']:'';hni+='<div style=\x22display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px\x22>'+'<span style=\x22font-size:10px;color:#94a3b8\x22>بروز: '+erh(String(fjr['updated']||'')['slice'](0xb,0x10))+(hly?' · '+erh(hly):'')+'</span>'+'<span style=\x22display:flex;gap:6px\x22>'+'<button type=\x22button\x22 data-uc=\x22reload\x22 style=\x22font-size:10.5px;padding:4px 9px;border:1px solid #c7d2fe;border-radius:9px;background:#eef2ff;color:#4338ca;font-weight:700\x22>↻ بروزرسانی</button>'+'<a href=\x22'+erh(jif())+'/panel\x22 target=\x22_blank\x22 rel=\x22noopener\x22 style=\x22font-size:10.5px;padding:4px 9px;border:1px solid #c7d2fe;border-radius:9px;background:#fff;color:#4338ca;font-weight:700;text-decoration:none\x22>📈 پنلِ کامل</a>'+'</span></div>',ddw(dxy,hni);};if(typeof window['fetch']!=='function'){gsx(dxy,'nofetch');return;}try{window['fetch'](bgn,{'method':'GET','headers':hgl()})['then'](function(doa){var fks=doa['text']?doa['text']():Promise['resolve']('');return fks['then'](function(fm){return{'ok':doa['ok'],'status':doa['status'],'text':fm};});})['then'](jdr)['catch'](function(){gsx(dxy,'net');});}catch(kr){gsx(dxy,'throw');}}function dxx(gvn){try{var fdu=gvn;while(fdu&&fdu['nodeType']===0x1){if(fdu['style']&&fdu['style']['display']==='none')return![];if(fdu['hasAttribute']&&fdu['hasAttribute']('hidden'))return![];if(fdu['id']==='sec-settings'){var iqh=window['getComputedStyle']?window['getComputedStyle'](fdu):null;if(iqh&&iqh['display']==='none')return![];}fdu=fdu['parentElement'];}return!![];}catch(tg){return!![];}}var cgu=0x0;function gvo(ixo){try{if(!ixo||ixo['style']['display']==='none')return;if(!dxx(ixo))return;if(cgu&&Date['now']()-cgu<kqt)return;iqf(ixo);}catch(s){}}function zv(){var dvh=gax();if(!dvh){setTimeout(zv,0x320);return;}var qj=document['getElementById']('ai-usage-card');if(!qj)return;gvo(qj),qj['addEventListener']('click',function(ijg){var ezz=ijg['target']&&ijg['target']['getAttribute']?ijg['target']['getAttribute']('data-uc'):'';ezz==='reload'&&(qj['style']['display']='',qj['removeAttribute']('data-uc-hidden'),iqf(qj));}),setInterval(function(){gvo(qj);},0x7d0);}try{if(document['readyState']==='loading')document['addEventListener']('DOMContentLoaded',function(){zv();});else zv();}catch(jux){}}());
 </script>
 <!--USAGE_CARD_END-->
-
-/* 6.9.71: ماژول جامع و ضدخراب سامانه (گشت صوتی + آب‌وهوا و بحران + فعال‌سازی تمامی دکمه‌ها) */
-(function(){
-'use strict';
-
-function appData(){try{return window['__APP_DATA']||{};}catch(e){return{};}}
-function toast(m){try{var a=appData();if(a&&a['toast']){a['toast'](m);return;}}catch(e){}try{alert(m);}catch(e2){}}
-
-// ==========================================
-// ۱) موتور گشت‌زنی صوتی و لمسی (Patrol Engine)
-// ==========================================
-window.__patrolState = {
-  stepIndex: 0,
-  steps: [
-    {
-      key: 'location',
-      q: '📍 محل دقیق را بگویید یا انتخاب کنید:',
-      chips: ['خیابان اصلی', 'کوچه', 'میدان', 'بلوار', 'چهارراه', 'پارک و فضای سبز', 'زیرگذر / پل'],
-      optional: false
-    },
-    {
-      key: 'type',
-      q: '🔧 نوع مشکل چیست؟',
-      chips: ['چاله و فرونشست', 'آسفالت و لکه‌گیری', 'خرابی جدول و جوی', 'روشنایی معابر', 'سد معبر', 'نظافت و پسماند'],
-      optional: false
-    },
-    {
-      key: 'severity',
-      q: '⚠️ شدت خرابی و اولویت کار چیست؟',
-      chips: ['🔴 فوری و خطرساز', '🟡 اولویت زیاد', '⚪ عادی و روتین'],
-      optional: false
-    },
-    {
-      key: 'photo',
-      q: '📷 عکس از محل (اختیاری):',
-      chips: ['بدون عکس — تأیید نهایی', '📷 گرفتن عکس با دوربین'],
-      optional: true
-    }
-  ],
-  answers: {},
-  photos: []
-};
-
-window.__renderPatrolQuickChips = function(){
-  try{
-    var st = window.__patrolState;
-    var step = st.steps[st.stepIndex];
-    var box = document.getElementById('patrol-quick-chips');
-    if(!box || !step) return;
-    
-    box.innerHTML = '';
-    step.chips.forEach(function(chipText){
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'patrol-chip';
-      btn.textContent = chipText;
-      btn.onclick = function(e){
-        if(e) e.preventDefault();
-        window.__handlePatrolQuickChip(chipText);
-      };
-      box.appendChild(btn);
-    });
-  }catch(err){}
-};
-
-window.__handlePatrolQuickChip = function(text){
-  var st = window.__patrolState;
-  if(!st) return;
-  
-  if(text === '📷 گرفتن عکس با دوربین'){
-    var cam = document.getElementById('patrol-cam-direct-input');
-    if(cam) cam.click();
-    return;
-  }
-  
-  var curKey = (st.steps[st.stepIndex] && st.steps[st.stepIndex].key) || ('step_' + st.stepIndex);
-  st.answers[curKey] = text;
-  
-  var ansEl = document.getElementById('patrol-step-answer');
-  if(ansEl) ansEl.textContent = text;
-  
-  var nxtBtn = document.getElementById('btn-patrol-step-next');
-  if(nxtBtn) nxtBtn.disabled = false;
-  
-  toast('✅ ' + text);
-  // Auto-advance after 400ms
-  setTimeout(function(){
-    window.__patrolNextStepDirect();
-  }, 450);
-};
-
-window.__handlePatrolCameraFile = function(inp){
-  try{
-    var file = inp.files && inp.files[0];
-    if(!file) return;
-    var reader = new FileReader();
-    reader.onload = function(e){
-      var base64 = e.target.result;
-      var st = window.__patrolState;
-      if(st){
-        st.photos.push(base64);
-        st.answers['photo'] = '۱ عکس ثبت شد 📷';
-        var ansEl = document.getElementById('patrol-step-answer');
-        if(ansEl) ansEl.textContent = '✅ عکس با موفقیت گرفته شد';
-        var nxtBtn = document.getElementById('btn-patrol-step-next');
-        if(nxtBtn) nxtBtn.disabled = false;
-        toast('📷 عکس پیوست شد');
-      }
-    };
-    reader.readAsDataURL(file);
-  }catch(e){
-    toast('خطا در بارگذاری عکس');
-  }
-};
-
-window.__openPatrolDirect = function(e){
-  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
-  try{
-    var overlay = document.getElementById('patrol-overlay');
-    var idle = document.getElementById('patrol-idle');
-    var wizard = document.getElementById('patrol-wizard');
-    var preview = document.getElementById('patrol-preview');
-    
-    if(overlay) overlay.classList.remove('hidden');
-    if(idle) idle.classList.remove('hidden');
-    if(wizard) wizard.classList.add('hidden');
-    if(preview) preview.classList.add('hidden');
-  }catch(err){}
-};
-
-window.__closePatrolDirect = function(e){
-  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
-  try{
-    var overlay = document.getElementById('patrol-overlay');
-    if(overlay) overlay.classList.add('hidden');
-    if(window['speechSynthesis']) window['speechSynthesis'].cancel();
-  }catch(err){}
-};
-
-window.__speakPatrolGuideDirect = function(e){
-  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
-  var text = 'راهنمای گشت‌زنی: دکمه قرمز میکروفن را بزن و به ترتیب به چهار سؤال جواب بده: اول محل دقیق، دوم نوع مشکل، سوم شدت خرابی، و در آخر می‌توانی عکس بگیری.';
-  try{
-    if('speechSynthesis' in window){
-      window.speechSynthesis.cancel();
-      var u = new SpeechSynthesisUtterance(text);
-      u.lang = 'fa-IR';
-      u.rate = 0.95;
-      window.speechSynthesis.speak(u);
-      toast('📢 راهنمای صوتی در حال پخش...');
-      return;
-    }
-  }catch(e2){}
-  toast(text);
-};
-
-window.__speakPatrolQDirect = function(e){
-  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
-  var q = '';
-  try{
-    var el = document.getElementById('patrol-question');
-    if(el) q = el.textContent || '';
-  }catch(e1){}
-  if(!q) return;
-  try{
-    if('speechSynthesis' in window){
-      window.speechSynthesis.cancel();
-      var u = new SpeechSynthesisUtterance(q);
-      u.lang = 'fa-IR';
-      window.speechSynthesis.speak(u);
-    }
-  }catch(e3){}
-};
-
-window.__startPatrolRecordingDirect = function(e){
-  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
-  try{
-    var idle = document.getElementById('patrol-idle');
-    var wizard = document.getElementById('patrol-wizard');
-    if(idle) idle.classList.add('hidden');
-    if(wizard) wizard.classList.remove('hidden');
-    
-    window.__patrolState.stepIndex = 0;
-    window.__patrolState.answers = {};
-    window.__patrolState.photos = [];
-    
-    var step = window.__patrolState.steps[0];
-    var ind = document.getElementById('patrol-step-indicator');
-    var qEl = document.getElementById('patrol-question');
-    var ansEl = document.getElementById('patrol-step-answer');
-    var nxtBtn = document.getElementById('btn-patrol-step-next');
-    var stMsg = document.getElementById('patrol-step-status');
-    
-    if(ind) ind.textContent = 'مرحله ۱ از ۴';
-    if(qEl) qEl.textContent = step.q;
-    if(ansEl) ansEl.textContent = '—';
-    if(nxtBtn){ nxtBtn.disabled = true; nxtBtn.textContent = 'مرحله بعد ▶'; }
-    if(stMsg) stMsg.textContent = 'میکروفن را بزن و بگو یا از گزینه‌های پایین انتخاب کن';
-    
-    window.__renderPatrolQuickChips();
-    window.__speakPatrolQDirect();
-  }catch(err){}
-};
-
-window.__patrolMicDirect = function(e){
-  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
-  var stMsg = document.getElementById('patrol-step-status');
-  var ansEl = document.getElementById('patrol-step-answer');
-  var nxtBtn = document.getElementById('btn-patrol-step-next');
-  
-  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR){
-    if(stMsg) stMsg.textContent = '💡 از گزینه‌های لمسی پایین استفاده کنید یا تایپ نمایید.';
-    toast('مرورگر از تبدیل صوت پشتیبانی نمی‌کند؛ از گزینه‌های پایین انتخاب کنید.');
-    return;
-  }
-  
-  try{
-    var recognizer = new SR();
-    recognizer.lang = 'fa-IR';
-    recognizer.continuous = false;
-    recognizer.interimResults = true;
-    
-    recognizer.onstart = function(){
-      if(stMsg) stMsg.textContent = '🎧 در حال گوش دادن... واضح صحبت کنید';
-      toast('🎙️ گوش می‌دهم...');
-    };
-    recognizer.onresult = function(ev){
-      var transcript = '';
-      for(var i = 0; i < ev.results.length; i++){
-        transcript += ev.results[i][0].transcript;
-      }
-      if(ansEl) ansEl.textContent = transcript;
-    };
-    recognizer.onerror = function(ev){
-      if(stMsg) stMsg.textContent = '💡 از گزینه‌های لمسی پایین یا کادر تایپ استفاده کنید';
-    };
-    recognizer.onend = function(){
-      var val = ansEl ? ansEl.textContent.trim() : '';
-      if(val && val !== '—'){
-        var st = window.__patrolState;
-        var curKey = (st.steps[st.stepIndex] && st.steps[st.stepIndex].key) || ('step_' + st.stepIndex);
-        st.answers[curKey] = val;
-        if(nxtBtn) nxtBtn.disabled = false;
-        if(stMsg) stMsg.textContent = '✅ گفتار ثبت شد — مرحله بعد را بزنید';
-      }
-    };
-    recognizer.start();
-  }catch(err){
-    if(stMsg) stMsg.textContent = '💡 از گزینه‌های سریع پایین انتخاب کنید';
-  }
-};
-
-window.__patrolManualSubmitDirect = function(e){
-  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
-  var inp = document.getElementById('patrol-manual-input');
-  var txt = inp ? inp.value.trim() : '';
-  if(!txt){ toast('لطفاً متنی تایپ کنید'); return; }
-  window.__handlePatrolQuickChip(txt);
-  if(inp) inp.value = '';
-};
-
-window.__patrolNextStepDirect = function(e){
-  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
-  var st = window.__patrolState;
-  if(!st) return;
-  
-  st.stepIndex++;
-  if(st.stepIndex < st.steps.length){
-    var step = st.steps[st.stepIndex];
-    var ind = document.getElementById('patrol-step-indicator');
-    var qEl = document.getElementById('patrol-question');
-    var ansEl = document.getElementById('patrol-step-answer');
-    var nxtBtn = document.getElementById('btn-patrol-step-next');
-    var stMsg = document.getElementById('patrol-step-status');
-    
-    if(ind) ind.textContent = 'مرحله ' + (st.stepIndex + 1) + ' از ' + st.steps.length;
-    if(qEl) qEl.textContent = step.q;
-    if(ansEl) ansEl.textContent = '—';
-    if(stMsg) stMsg.textContent = 'میکروفن را بزن یا از گزینه‌های پایین انتخاب کن';
-    if(nxtBtn){
-      nxtBtn.disabled = !step.optional;
-      nxtBtn.textContent = (st.stepIndex === st.steps.length - 1) ? 'پایان و مشاهده گزارش ✅' : 'مرحله بعد ▶';
-    }
-    window.__renderPatrolQuickChips();
-    window.__speakPatrolQDirect();
-  } else {
-    // Show preview
-    var wizard = document.getElementById('patrol-wizard');
-    var preview = document.getElementById('patrol-preview');
-    if(wizard) wizard.classList.add('hidden');
-    if(preview) preview.classList.remove('hidden');
-    
-    var txtEl = document.getElementById('patrol-preview-text');
-    if(txtEl){
-      var summary = '🚗 گزارش گشت‌زنی صوتی و میدانی\n' +
-        '📍 محل: ' + (st.answers.location || 'مشخص نشده') + '\n' +
-        '🔧 نوع مشکل: ' + (st.answers.type || 'مشخص نشده') + '\n' +
-        '⚠️ اولویت: ' + (st.answers.severity || 'عادی') + '\n' +
-        '📷 عکس: ' + (st.photos.length ? (st.photos.length + ' عکس پیوست شد') : 'بدون عکس') + '\n' +
-        '📅 تاریخ: ' + (new Date().toLocaleDateString('fa-IR'));
-      txtEl.textContent = summary;
-    }
-  }
-};
-
-window.__patrolRedoStepDirect = function(e){
-  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
-  var st = window.__patrolState;
-  if(!st) return;
-  var curKey = (st.steps[st.stepIndex] && st.steps[st.stepIndex].key) || ('step_' + st.stepIndex);
-  delete st.answers[curKey];
-  var ansEl = document.getElementById('patrol-step-answer');
-  if(ansEl) ansEl.textContent = '—';
-  var nxtBtn = document.getElementById('btn-patrol-step-next');
-  if(nxtBtn) nxtBtn.disabled = !st.steps[st.stepIndex].optional;
-  toast('مرحله مجدداً فعال شد');
-};
-
-window.__confirmPatrolDirect = function(e){
-  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
-  try{
-    var st = window.__patrolState || { answers: {}, photos: [] };
-    var title = 'گزارش گشت‌زنی: ' + (st.answers.type || 'خرابی شهری') + ' — ' + (st.answers.location || 'محل ثبت‌شده');
-    var desc = 'گزارش ثبت‌شده از طریق گشت صوتی:\n' +
-      'محل: ' + (st.answers.location || '') + '\n' +
-      'نوع خرابی: ' + (st.answers.type || '') + '\n' +
-      'شدت: ' + (st.answers.severity || '');
-      
-    var isUrgent = (st.answers.severity && (st.answers.severity.indexOf('فوری') !== -1 || st.answers.severity.indexOf('🔴') !== -1));
-    
-    var newItem = {
-      id: String(Date.now()),
-      title: title,
-      description: desc,
-      priority: isUrgent ? 'urgent' : 'normal',
-      status: 'pending',
-      photos: st.photos.slice(0, 3),
-      date: new Date().toLocaleDateString('fa-IR'),
-      source: 'patrol',
-      createdAt: new Date().toLocaleDateString('fa-IR'),
-      createdTs: Date.now()
-    };
-    
-    var raw = localStorage.getItem('shahrdari_orders') || localStorage.getItem('shahrdari_actions') || '[]';
-    var arr = JSON.parse(raw);
-    if(Array.isArray(arr)){
-      arr.unshift(newItem);
-      localStorage.setItem('shahrdari_orders', JSON.stringify(arr));
-    }
-    toast('✅ گزارش گشت‌زنی با موفقیت ذخیره شد');
-    window.__closePatrolDirect();
-    window.__refreshLiveTrackers();
-  }catch(err){
-    toast('گزارش ذخیره شد');
-    window.__closePatrolDirect();
-  }
-};
-
-window.__discardPatrolDirect = function(e){
-  if(e){try{e.preventDefault();e.stopPropagation();}catch(ex){}}
-  window.__closePatrolDirect();
-  toast('گشت‌زنی لغو شد');
-};
-
-// ==========================================
-// ۲) ماژول آب‌وهوا و آماده‌باش بحران (Weather & Crisis)
-// ==========================================
-window.__fetchLiveWeather = function(){
-  var url = 'https://api.open-meteo.com/v1/forecast?latitude=34.0917&longitude=49.6892&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&timezone=auto';
-  
-  var tempEl = document.getElementById('wx-temp');
-  var rainEl = document.getElementById('wx-rain-prob');
-  var windEl = document.getElementById('wx-wind');
-  var badgeEl = document.getElementById('wx-status-badge');
-  var msgEl = document.getElementById('wx-alert-msg');
-  var iconEl = document.getElementById('wx-icon');
-  
-  fetch(url, { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(data){
-    if(data && data.current){
-      var t = Math.round(data.current.temperature_2m);
-      var rain = data.current.precipitation || 0;
-      var wind = Math.round(data.current.wind_speed_10m || 0);
-      
-      if(tempEl) tempEl.textContent = t + '°C';
-      if(rainEl) rainEl.textContent = rain + ' mm';
-      if(windEl) windEl.textContent = wind + ' km/h';
-      
-      if(t <= 0 || (t <= 2 && rain > 0)){
-        if(badgeEl){ badgeEl.textContent = '🔴 هشدار یخبندان و برف'; badgeEl.style.background = '#dc2626'; }
-        if(msgEl) msgEl.innerHTML = '❄️ <b>آماده‌باش قرمز یخبندان:</b> احتمال لغزندگی معابر و پل‌ها. ماشین‌آلات نمک‌پاش در حالت آماده‌باش قرار گیرند.';
-        if(iconEl) iconEl.textContent = '❄️';
-      } else if(rain > 2){
-        if(badgeEl){ badgeEl.textContent = '🟡 هشدار بارندگی شدید'; badgeEl.style.background = '#f59e0b'; }
-        if(msgEl) msgEl.innerHTML = '🌧️ <b>آماده‌باش زرد بارندگی:</b> احتمال آب‌گرفتگی معابر و زیرگذرها. تیم‌های لایروبی کانال‌ها فعال شوند.';
-        if(iconEl) iconEl.textContent = '🌧️';
-      } else {
-        if(badgeEl){ badgeEl.textContent = '🟢 وضعیت عادی'; badgeEl.style.background = '#16a34a'; }
-        if(msgEl) msgEl.innerHTML = '🌤️ <b>شرایط جوی پایدار است:</b> معابر شهری در شرایط عادی عملیاتی قرار دارند.';
-        if(iconEl) iconEl.textContent = '🌤️';
-      }
-      toast('🌤️ وضعیت جوی به‌روز شد');
-    }
-  }).catch(function(){
-    // Offline fallback
-    if(tempEl) tempEl.textContent = '۲۲°C';
-    if(rainEl) rainEl.textContent = '۰٪';
-    if(windEl) windEl.textContent = '۱۲ km/h';
-  });
-};
-
-window.__broadcastCrisisOrder = function(){
-  try{
-    var title = '🚨 آماده‌باش فوری مدیریت بحران و پایش معابر';
-    var desc = 'دستور فوری شهردار / مدیر اجرایی: با توجه به تغییرات جوی، کلیه سرپرستان و ماشین‌آلات نمک‌پاش و لایروبی در آماده‌باش ۱۰۰٪ قرار گیرند.';
-    
-    var newItem = {
-      id: String(Date.now()),
-      title: title,
-      description: desc,
-      priority: 'urgent',
-      status: 'pending',
-      targetRole: 'supervisor',
-      date: new Date().toLocaleDateString('fa-IR'),
-      source: 'crisis',
-      createdAt: new Date().toLocaleDateString('fa-IR'),
-      createdTs: Date.now()
-    };
-    
-    var raw = localStorage.getItem('shahrdari_orders') || '[]';
-    var arr = JSON.parse(raw);
-    if(Array.isArray(arr)){
-      arr.unshift(newItem);
-      localStorage.setItem('shahrdari_orders', JSON.stringify(arr));
-    }
-    toast('🚨 دستور آماده‌باش بحران به تمام سرپرستان ابلاغ شد');
-    window.__refreshLiveTrackers();
-  }catch(e){
-    toast('دستور آماده‌باش صادر شد');
-  }
-};
-
-// ==========================================
-// ۳) اتصال و فعال‌سازی قطعی تمامی دکمه‌های سیستم
-// ==========================================
-window.__wireAllUnboundButtons = function(){
-  try{
-    // ۱. دکمه بازگشت نوار موبایل (mt-back)
-    var mtBack = document.getElementById('mt-back');
-    if(mtBack && !mtBack.__wired){
-      mtBack.__wired = true;
-      mtBack.onclick = function(e){
-        if(e) e.preventDefault();
-        try{
-          if(typeof window['navigate'] === 'function'){
-            window['navigate']('home');
-            return;
-          }
-        }catch(ex){}
-        try{ history.back(); }catch(ex2){}
-      };
-    }
-    
-    // ۲. چیپ‌های فیلتر ورودی مردمی (inx-chip-*)
-    ['all', 'pending', 'progress', 'done'].forEach(function(status){
-      var chip = document.getElementById('inx-chip-' + status);
-      if(chip && !chip.__wired){
-        chip.__wired = true;
-        chip.onclick = function(e){
-          if(e) e.preventDefault();
-          ['all', 'pending', 'progress', 'done'].forEach(function(s){
-            var c = document.getElementById('inx-chip-' + s);
-            if(c) c.classList.toggle('selected', s === status);
-          });
-          // Filter public list
-          var items = document.querySelectorAll('#complaints-list > .card, #public-queue-list > div');
-          items.forEach(function(it){
-            if(status === 'all'){ it.style.display = ''; return; }
-            var t = (it.textContent || '').toLowerCase();
-            if(status === 'done') it.style.display = (t.indexOf('پاسخ داده') !== -1 || t.indexOf('انجام شد') !== -1) ? '' : 'none';
-            else if(status === 'progress') it.style.display = (t.indexOf('در حال') !== -1 || t.indexOf('پیگیری') !== -1) ? '' : 'none';
-            else if(status === 'pending') it.style.display = (t.indexOf('در انتظار') !== -1 || t.indexOf('جدید') !== -1) ? '' : 'none';
-          });
-        };
-      }
-    });
-    
-    // ۳. دکمه‌های جستجوی صوتی داشبورد (dash-ask-mic, owner-ask-mic)
-    ['dash-ask-mic', 'owner-ask-mic'].forEach(function(micId){
-      var btn = document.getElementById(micId);
-      if(btn && !btn.__wired){
-        btn.__wired = true;
-        btn.onclick = function(e){
-          if(e) e.preventDefault();
-          toast('🎙️ دستیار صوتی آماده دریافت سؤال است...');
-        };
-      }
-    });
-    
-    // ۴. دکمه‌های تنظیمات و خروج در منوی کشویی (sb-btn-*)
-    var sbSet = document.getElementById('sb-btn-settings');
-    if(sbSet && !sbSet.__wired){
-      sbSet.__wired = true;
-      sbSet.onclick = function(e){
-        if(e) e.preventDefault();
-        try{ if(typeof window['navigate'] === 'function') window['navigate']('settings'); }catch(ex){}
-      };
-    }
-    
-    var sbExit = document.getElementById('sb-btn-exit-keep');
-    if(sbExit && !sbExit.__wired){
-      sbExit.__wired = true;
-      sbExit.onclick = function(e){
-        if(e) e.preventDefault();
-        if(confirm('آیا از حساب کاربری خارج می‌شوید؟')){
-          try{ localStorage.removeItem('shahrdari_session'); }catch(ex){}
-          location.reload();
-        }
-      };
-    }
-  }catch(err){}
-};
-
-// ==========================================
-// ۴) هماهنگ‌سازی سرپرستان و بنرهای چشمک‌زن
-// ==========================================
-window.__populateSupervisorSelectors = function(){
-  try{
-    var users = [];
-    try{
-      var raw = localStorage.getItem('shahrdari_users') || localStorage.getItem('app_users');
-      if(raw) users = JSON.parse(raw);
-    }catch(e){}
-    
-    var sups = [];
-    if(Array.isArray(users)){
-      users.forEach(function(u){
-        if(u && (u.role === 'supervisor' || u.role === 'operator' || u.role === 'manager')){
-          var n = u.name || u.username;
-          if(n && sups.indexOf(n) === -1) sups.push(n);
-        }
-      });
-    }
-    
-    ['moi-target-user', 't-target-user'].forEach(function(selId){
-      var sel = document.getElementById(selId);
-      if(sel){
-        var cur = sel.value;
-        sel.innerHTML = '<option value="">📢 تمام سرپرستان (همگانی — ارسال به همه)</option>';
-        sups.forEach(function(name){
-          var opt = document.createElement('option');
-          opt.value = name;
-          opt.textContent = '🎯 سرپرست: ' + name;
-          if(cur === name) opt.selected = true;
-          sel.appendChild(opt);
-        });
-      }
-    });
-  }catch(err){}
-};
-
-window.__refreshLiveTrackers = function(){
-  try{
-    window.__populateSupervisorSelectors();
-    window.__wireAllUnboundButtons();
-    
-    // Scan orders
-    var rawOrders = localStorage.getItem('shahrdari_orders') || localStorage.getItem('shahrdari_actions') || '[]';
-    var orders = [];
-    try{ orders = JSON.parse(rawOrders); }catch(e){}
-    if(!Array.isArray(orders)) orders = [];
-    
-    var totalOrders = orders.length;
-    var pendingOrders = 0, ongoingOrders = 0, doneOrders = 0;
-    
-    orders.forEach(function(o){
-      var st = (o && o.status) || 'pending';
-      if(st === 'done') doneOrders++;
-      else if(st === 'ongoing' || st === 'progress') ongoingOrders++;
-      else pendingOrders++;
-    });
-    
-    ['stg-cnt-all', 'stg-cnt-all-orders'].forEach(function(id){ var el = document.getElementById(id); if(el) el.textContent = totalOrders; });
-    ['stg-cnt-pending', 'stg-cnt-pending-orders'].forEach(function(id){ var el = document.getElementById(id); if(el) el.textContent = pendingOrders; });
-    ['stg-cnt-ongoing', 'stg-cnt-ongoing-orders'].forEach(function(id){ var el = document.getElementById(id); if(el) el.textContent = ongoingOrders; });
-    ['stg-cnt-done', 'stg-cnt-done-orders'].forEach(function(id){ var el = document.getElementById(id); if(el) el.textContent = doneOrders; });
-    ['stg-total-badge', 'stg-total-badge-orders'].forEach(function(id){ var el = document.getElementById(id); if(el) el.textContent = totalOrders + ' دستور'; });
-    
-    // Blinking Order Alerts
-    var ordBanner1 = document.getElementById('order-alert-banner');
-    var ordBanner2 = document.getElementById('order-alert-banner-orders');
-    if(pendingOrders > 0){
-      if(ordBanner1){ ordBanner1.style.display = 'block'; var c1 = document.getElementById('order-alert-cnt'); if(c1) c1.textContent = pendingOrders + ' جدید'; }
-      if(ordBanner2){ ordBanner2.style.display = 'block'; var c2 = document.getElementById('order-alert-cnt-orders'); if(c2) c2.textContent = pendingOrders + ' جدید'; }
-    } else {
-      if(ordBanner1) ordBanner1.style.display = 'none';
-      if(ordBanner2) ordBanner2.style.display = 'none';
-    }
-    
-    // Blinking Complaint Alerts
-    var rawCx = localStorage.getItem('shahrdari_complaints') || localStorage.getItem('shahrdari_public_queue') || '[]';
-    var cxs = [];
-    try{ cxs = JSON.parse(rawCx); }catch(e){}
-    if(!Array.isArray(cxs)) cxs = [];
-    
-    var pendingCx = 0;
-    cxs.forEach(function(c){
-      var st = (c && c.status) || 'pending';
-      if(st === 'pending' || st === 'new') pendingCx++;
-    });
-    
-    var cxBanner1 = document.getElementById('complaint-alert-banner');
-    var cxBanner2 = document.getElementById('complaint-alert-banner-orders');
-    if(pendingCx > 0){
-      if(cxBanner1){ cxBanner1.style.display = 'block'; var cc1 = document.getElementById('complaint-alert-cnt'); if(cc1) cc1.textContent = pendingCx + ' جدید'; }
-      if(cxBanner2){ cxBanner2.style.display = 'block'; var cc2 = document.getElementById('complaint-alert-cnt-orders'); if(cc2) cc2.textContent = pendingCx + ' جدید'; }
-    } else {
-      if(cxBanner1) cxBanner1.style.display = 'none';
-      if(cxBanner2) cxBanner2.style.display = 'none';
-    }
-  }catch(err){}
-};
-
-// Initial triggers
-try{
-  setTimeout(window.__refreshLiveTrackers, 400);
-  setTimeout(window.__fetchLiveWeather, 1200);
-  setInterval(window.__refreshLiveTrackers, 3000);
-}catch(e){}
-
-window['__PATROL_BACKSTOP__'] = { ok: true, v: '6.9.71', active: Date.now() };
-})();
-
-</script>
 </body>
 </html>
