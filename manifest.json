@@ -1,0 +1,27 @@
+{
+  "name": "سامانه مدیریت هوشمند عملیات",
+  "short_name": "شهرداری",
+  "description": "سامانهٔ ثبت و مدیریت عملیات، دستورها، گشت‌زنی و گزارش‌گیری شهری",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1f3a",
+  "theme_color": "#1e3a5f",
+  "dir": "rtl",
+  "lang": "fa",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

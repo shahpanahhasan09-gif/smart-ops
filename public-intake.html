@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ثبت درخواست مردمی</title>
+<meta name="description" content="ثبت کنترل‌شده درخواست مردمی و دریافت کد پیگیری">
+<style>
+:root{font-family:Tahoma,Arial,sans-serif;color:#0f172a;background:#f1f5f9}*{box-sizing:border-box}body{margin:0;background:linear-gradient(160deg,#e0f2fe,#f8fafc 48%,#eef2ff);min-height:100vh}main{max-width:620px;margin:0 auto;padding:18px 12px 36px}.card{background:#fff;border:1px solid #dbeafe;border-radius:18px;padding:16px;box-shadow:0 8px 28px rgba(15,23,42,.09);margin-bottom:12px}.brand{text-align:center;background:linear-gradient(135deg,#0f2038,#1d4d8f);color:#fff;border:0}.brand h1{font-size:20px;margin:4px 0 8px}.brand p{font-size:12px;color:#dbeafe;line-height:2;margin:0}.note{font-size:11px;line-height:2;color:#475569;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;padding:9px 10px;margin-bottom:12px}.label{display:block;font-size:12px;font-weight:800;color:#334155;margin:10px 0 5px}.req{color:#dc2626}.input,.textarea,.select{width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:10px 11px;font:12px Tahoma;background:#fff;color:#0f172a}.textarea{resize:vertical;min-height:96px;line-height:1.9}.row{display:flex;gap:8px}.row>*{flex:1}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}.btn{border:0;border-radius:10px;padding:10px 13px;font:800 12px Tahoma;cursor:pointer}.primary{background:#2563eb;color:#fff;flex:1}.secondary{background:#e2e8f0;color:#334155}.success{background:#16a34a;color:#fff}.danger{background:#fff1f2;color:#b91c1c;border:1px solid #fecaca}.photos{display:flex;gap:7px;flex-wrap:wrap}.photos img{width:82px;height:82px;object-fit:cover;border-radius:9px;border:1px solid #cbd5e1}.status{display:none;border-radius:12px;padding:12px;font-size:12px;line-height:2}.status.show{display:block}.ok{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}.err{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}.info{background:#eff6ff;color:#1e3a5f;border:1px solid #bfdbfe}.muted{font-size:10.5px;color:#64748b;line-height:1.8}.code{direction:ltr;text-align:center;font:800 21px monospace;letter-spacing:1px;color:#1d4ed8;background:#eff6ff;border:1px dashed #93c5fd;border-radius:10px;padding:10px;margin:9px 0}.hidden{display:none!important}@media(max-width:480px){.row{flex-direction:column;gap:0}}
+</style>
+</head>
+<body>
+<main>
+  <section class="card brand"><div style="font-size:34px">📢</div><h1>ثبت درخواست مردمی</h1><p>درخواست شما ابتدا بررسی می‌شود؛ پس از تأیید، به واحد مربوط ارجاع خواهد شد.</p></section>
+  <section id="form-card" class="card">
+    <div class="note">لطفاً فقط یک موضوع را در هر درخواست بنویسید. اطلاعات تماس اختیاری است و در فهرست عمومی نمایش داده نمی‌شود. عکس‌ها فقط برای بررسی داخلی استفاده می‌شوند.</div>
+    <label class="label" for="recipient">🎯 گیرنده درخواست</label>
+    <select id="recipient" class="select" style="margin-bottom:10px;border-color:#93c5fd;font-weight:bold">
+      <option value="mayor">🏛️ شهردار محترم (مسائل کلان شهری، پیشنهادات، پیگیری ویژه)</option>
+      <option value="manager" selected>👷 مدیر اجرایی عملیات (عمرانی، آسفالت، لکه‌گیری، جدول، خدمات شهری)</option>
+    </select>
+    <label class="label" for="subject">موضوع <span class="req">*</span></label><input id="subject" class="input" maxlength="120" placeholder="مثلاً: خرابی چراغ روشنایی">
+    <div class="row"><div><label class="label" for="region">منطقه</label><input id="region" class="input" maxlength="80" placeholder="مثلاً: منطقه ۳"></div><div><label class="label" for="address">آدرس</label><input id="address" class="input" maxlength="240" placeholder="خیابان، کوچه، پلاک یا نشانی نزدیک"></div></div>
+    <label class="label" for="description">شرح کامل <span class="req">*</span></label><textarea id="description" class="textarea" maxlength="1800" placeholder="چه اتفاقی افتاده و دقیقاً کجا؟"></textarea>
+    <div class="row"><div><label class="label" for="name">نام (اختیاری)</label><input id="name" class="input" maxlength="100" placeholder="نام شما"></div><div><label class="label" for="phone">شماره تماس (اختیاری)</label><input id="phone" class="input" maxlength="30" inputmode="tel" placeholder="برای پیگیری احتمالی"></div></div>
+    <label class="label">عکس (اختیاری، حداکثر ۳ عکس)</label><input id="photos" class="input" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+    <div id="photo-preview" class="photos" style="margin-top:8px"></div>
+    <label class="label">موقعیت اختیاری</label><div class="actions" style="margin-top:0"><button id="locate" class="btn secondary" type="button">📍 ثبت موقعیت من</button><span id="loc-note" class="muted" style="flex:1;padding:6px 0">بدون اجازهٔ شما موقعیت ثبت نمی‌شود.</span></div>
+    <div id="honey-wrap" class="hidden"><label class="label" for="website">وب‌سایت</label><input id="website" class="input" autocomplete="off"></div>
+    <div class="actions"><button id="submit" class="btn primary" type="button">✅ ارسال درخواست</button><button id="reset" class="btn secondary" type="button">پاک‌کردن</button></div>
+    <div id="form-status" class="status" style="margin-top:10px"></div>
+  </section>
+  <section id="result-card" class="card hidden"><h2 style="font-size:15px;margin:0 0 8px;color:#1e3a5f">✅ درخواست شما ثبت شد</h2><div class="muted">این کد را نگه دارید؛ برای دیدن وضعیت فقط همین کد لازم است.</div><div id="new-code" class="code"></div><button id="new-request" class="btn secondary" type="button" style="width:100%">ثبت درخواست دیگر</button></section>
+  <section class="card"><h2 style="font-size:14px;margin:0 0 8px;color:#1e3a5f">🔍 پیگیری درخواست</h2><div class="muted">فقط وضعیت درخواستِ دارای این کد نمایش داده می‌شود؛ اطلاعات شهروندان دیگر قابل مشاهده نیست.</div><div class="row" style="margin-top:8px"><input id="track-code" class="input" maxlength="40" placeholder="مثلاً PI-14050628-AB12"><button id="track" class="btn success" type="button">پیگیری</button></div><div id="track-status" class="status" style="margin-top:10px"></div></section>
+  <div class="muted" style="text-align:center">سامانهٔ مدیریت هوشمند عملیات · دریافت عمومیِ کنترل‌شده · نسخهٔ 6.9.68</div>
+</main>
+<script>
+(function(){
+  "use strict";
+  var API="https://ops-sync.shahpanahhasan09.workers.dev";
+  var qp=new URLSearchParams(location.search),org=String(qp.get("org")||"").trim();
+  var photos=[],locationValue="";
+  function $(id){return document.getElementById(id);}
+  function msg(el,text,kind){el.textContent=text;el.className="status show "+(kind||"info");}
+  function digits(s){return String(s||"").replace(/[۰-۹]/g,function(c){return String("۰۱۲۳۴۵۶۷۸۹".indexOf(c));});}
+  function headers(){var h={"Content-Type":"application/json"};if(org)h["X-Org-Id"]=org;return h;}
+  function resize(file,cb){var rd=new FileReader();rd.onload=function(e){var img=new Image();img.onload=function(){var sc=Math.min(1,900/Math.max(img.width,img.height)),cv=document.createElement("canvas");cv.width=Math.max(1,Math.round(img.width*sc));cv.height=Math.max(1,Math.round(img.height*sc));cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);cb(cv.toDataURL("image/jpeg",.68));};img.onerror=function(){cb(null);};img.src=e.target.result;};rd.onerror=function(){cb(null);};rd.readAsDataURL(file);}
+  function renderPhotos(){var box=$("photo-preview");box.innerHTML="";photos.forEach(function(p,i){var im=document.createElement("img");im.src=p;im.title="برای حذف لمس کنید";im.onclick=function(){photos.splice(i,1);renderPhotos();};box.appendChild(im);});}
+  $("photos").addEventListener("change",function(e){var files=Array.prototype.slice.call(e.target.files||[]).slice(0,3);photos=[];var left=files.length;if(!left){renderPhotos();return;}files.forEach(function(f){if(f.size>4*1024*1024){left--;if(!left)renderPhotos();return;}resize(f,function(x){if(x)photos.push(x);left--;if(!left)renderPhotos();});});e.target.value="";});
+  $("locate").onclick=function(){var n=$("loc-note");if(!navigator.geolocation){n.textContent="GPS در این مرورگر در دسترس نیست.";return;}n.textContent="در حال دریافت موقعیت…";navigator.geolocation.getCurrentPosition(function(p){locationValue="lat="+p.coords.latitude.toFixed(6)+"&lng="+p.coords.longitude.toFixed(6);n.textContent="✅ موقعیت ثبت شد";},function(){n.textContent="موقعیت ثبت نشد؛ می‌توانید بدون آن ارسال کنید.";},{enableHighAccuracy:true,timeout:10000});};
+  $("reset").onclick=function(){$("form-card").querySelectorAll("input,textarea").forEach(function(x){if(x.id!=="photos"&&x.id!=="website")x.value="";});photos=[];locationValue="";renderPhotos();$("loc-note").textContent="بدون اجازهٔ شما موقعیت ثبت نمی‌شود.";$("form-status").className="status";};
+  $("new-request").onclick=function(){$("result-card").classList.add("hidden");$("form-card").classList.remove("hidden");};
+  $("submit").onclick=function(){var subject=$("subject").value.trim(),desc=$("description").value.trim(),st=$("form-status");if(!subject||!desc){msg(st,"موضوع و شرح کامل الزامی است.","err");return;}if($("website").value){msg(st,"ارسال انجام نشد.","err");return;}var payload={recipient:($("recipient")?$("recipient").value:"manager"),subject:subject,region:$("region").value.trim(),address:$("address").value.trim(),description:desc,name:$("name").value.trim(),phone:$("phone").value.trim(),photos:photos.slice(0,3),location:locationValue,website:""};var b=$("submit");b.disabled=true;b.textContent="در حال ارسال…";fetch(API+"/public/intake",{method:"POST",headers:headers(),body:JSON.stringify(payload)}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(x){b.disabled=false;b.textContent="✅ ارسال درخواست";if(!x.ok)throw new Error(x.j&&x.j.message||"ارسال انجام نشد");$("new-code").textContent=x.j.code;$("form-card").classList.add("hidden");$("result-card").classList.remove("hidden");$("track-code").value=x.j.code;}).catch(function(e){b.disabled=false;b.textContent="✅ ارسال درخواست";msg(st,"⚠️ "+e.message,"err");});};
+  $("track").onclick=function(){var code=digits($("track-code").value.trim()),st=$("track-status");if(!code){msg(st,"کد پیگیری را وارد کنید.","err");return;}fetch(API+"/public/status?code="+encodeURIComponent(code)+(org?"&org="+encodeURIComponent(org):""),{headers:headers()}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(x){if(!x.ok)throw new Error(x.j&&x.j.message||"درخواستی با این کد پیدا نشد");var m={new:"در صف بررسی اولیه",review:"در حال بررسی",approved:"تأیید شده و در نوبت ارجاع",converted:"به درخواست رسمی ارجاع شد",duplicate:"به‌عنوان مورد تکراری بسته شد",irrelevant:"نامرتبط تشخیص داده شد",fake:"نیازمند بررسی بیشتر"};msg(st,"کد "+x.j.code+" — "+(m[x.j.status]||"وضعیت ثبت شد")+" · آخرین تغییر: "+String(x.j.updatedAt||"").slice(0,10),"ok");}).catch(function(e){msg(st,"⚠️ "+e.message,"err");});};
+})();
+</script>
+</body></html>

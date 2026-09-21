@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="fa">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>📊 نمایِ مصرفِ AI — سامانهٔ مدیریت هوشمند عملیات</title>
+<meta name="robots" content="noindex,nofollow">
+<style>
+  :root{--bg:#0d1524;--card:#131f33;--line:#1f2f4a;--tx:#e8f0fb;--mut:#93a8c4;--ok:#1fa97a;--warn:#e0a41f;--bad:#d9534f;--blue:#2f8fd6}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.9 Tahoma,"Segoe UI",sans-serif;padding:14px 12px 40px}
+  h1{font-size:17px;margin:0 0 4px}
+  .sub{color:var(--mut);font-size:12px;margin-bottom:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button{background:var(--blue);color:#fff;border:0;border-radius:10px;padding:9px 14px;font:inherit;font-size:13px;cursor:pointer}
+  button.ghost{background:#1b2a42;color:var(--tx);border:1px solid var(--line)}
+  input{background:#0b1220;color:var(--tx);border:1px solid var(--line);border-radius:9px;padding:8px;font:inherit;font-size:12px;min-width:0;flex:1}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:8px}
+  .it{background:#0f1a2c;border:1px solid var(--line);border-radius:11px;padding:9px}
+  .it b{display:block;font-size:12px;color:var(--mut);font-weight:400}
+  .it span{font-size:13px;word-break:break-word}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:5px;vertical-align:middle;background:var(--mut)}
+  .dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}.dot.warn{background:var(--warn)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{border-bottom:1px solid var(--line);padding:6px 4px;text-align:right}
+  th{color:var(--mut);font-weight:400}
+  .bar{height:9px;background:#0b1220;border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+  .bar>i{display:block;height:100%;background:var(--blue)}
+  .bar>i.hot{background:var(--warn)}.bar>i.full{background:var(--bad)}
+  .mut{color:var(--mut);font-size:12px}
+  .num{font-size:22px;font-weight:700}
+  .legend{font-size:11px;color:var(--mut);margin-top:6px}
+  .lg{display:inline-block;width:9px;height:9px;border-radius:2px;margin:0 4px 0 10px}
+  .hint{font-size:12px;color:var(--warn)}
+  .foot{color:var(--mut);font-size:11.5px;text-align:center;margin-top:16px}
+</style>
+</head>
+<body>
+  <h1>📊 نمایِ مصرفِ هوش مصنوعی <span class="mut" id="who"></span></h1>
+  <div class="sub" id="stamp">در حالِ خواندن…</div>
+
+  <div class="card">
+    <div class="row">
+      <button id="btn-refresh">🔄 تازه‌سازی</button>
+      <button class="ghost" id="btn-cfg">⚙️ آدرسِ ورکر</button>
+      <button class="ghost" id="btn-print">🖨️ چاپ</button>
+    </div>
+    <div class="row" id="cfgbox" style="display:none;margin-top:8px">
+      <input id="worker" placeholder="https://…workers.dev">
+      <input id="orgid" placeholder="شناسهٔ سازمان (مثلاً arak)" style="max-width:220px">
+      <button id="btn-save">ذخیره</button>
+    </div>
+    <div class="mut" style="margin-top:8px">این صفحه فقط با ورکرِ خودِ سازمانت حرف می‌زند. هیچ داده‌ای به جایِ دیگری ارسال نمی‌شود.</div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div><div class="mut">مصرفِ امروز</div><div class="num" id="todayNum">—</div></div>
+      <div><div class="mut">مجموعِ ۱۴ روز</div><div class="num" id="sumNum">—</div></div>
+      <div><div class="mut">سهمیهٔ روزانه</div><div class="num" id="quotaNum">—</div></div>
+    </div>
+    <div class="bar" style="margin-top:8px"><i id="quotaBar" style="width:0%"></i></div>
+    <div class="legend"><span class="lg" style="background:#2f8fd6"></span>رایگان<span class="lg" style="background:#9b59d0"></span>پولی<span class="lg" style="background:#1fa97a"></span>ویژن<span class="lg" style="background:#e08a1f"></span>رندر</div>
+  </div>
+
+  <div class="card"><div id="chart" class="mut">در انتظارِ داده…</div></div>
+  <div class="card"><div class="mut" style="margin-bottom:6px">بیشترینِ مصرف (۱۴ روز)</div><div id="users" class="mut">—</div></div>
+  <div class="card"><div class="mut" style="margin-bottom:8px">🩺 چک‌آپِ سریعِ سامانه</div><div class="grid" id="checkup"></div></div>
+
+  <div class="foot" id="foot">نمایِ مصرفِ AI · v6.9.59 (فاز ۱+۲) · طراحی و توسعه: حسن شه‌پناه</div>
+
+<script src="usage.js"></script>
+<script>
+(function () {
+  var U = window.SmartOpsUsage;
+  var LS = "muni_usage_cfg_v1";
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { worker: U.WORKER_DEFAULT, org: "", session: null, usage: null, users: null, site: null, sw: null };
+  try { var c = JSON.parse(localStorage.getItem(LS) || "{}"); if (c.worker) state.worker = c.worker; if (c.org != null) state.org = c.org; } catch (e) {}
+
+  function pairs() { return U.storagePairs(localStorage); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (m) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[m]; }); }
+
+  function renderCfg() { $("worker").value = state.worker; $("orgid").value = state.org || (state.session && state.session.trial ? state.session.trial.org : ""); }
+
+  function render() {
+    var u = state.usage || {};
+    var days = U.fillDays(u.days || [], 14);
+    var sum = U.sumDays(days);
+    var today = days[days.length - 1];
+    $("todayNum").textContent = U.faNum(today.total) + " فراخوانی";
+    $("sumNum").textContent = U.faNum(sum.total);
+    var lim = (u.limit && u.limit.freePerDay) || 0;
+    var pct = lim > 0 ? U.pct(today.free, lim) : null;
+    $("quotaNum").textContent = lim > 0 ? (U.faNum(Math.max(0, lim - today.free)) + " از " + U.faNum(lim)) : "بدونِ سقف";
+    var b = $("quotaBar"); b.style.width = (pct == null ? 0 : pct) + "%";
+    b.className = pct == null ? "" : (pct >= 100 ? "full" : (pct >= 80 ? "hot" : ""));
+    $("chart").innerHTML = U.barSvg(days, { w: 680, h: 128 });
+    var byUser = U.mergeByUser(days).slice(0, 8);
+    $("users").innerHTML = byUser.length ? ("<table><tr><th>کاربر</th><th>کل</th><th>رایگان</th><th>پولی</th><th>ویژن</th><th>رندر</th></tr>" +
+      byUser.map(function (r) { return "<tr><td>" + esc(r.user) + "</td><td>" + U.faNum(r.total) + "</td><td>" + U.faNum(r.free) + "</td><td>" + U.faNum(r.paid) + "</td><td>" + U.faNum(r.vision) + "</td><td>" + U.faNum(r.render) + "</td></tr>"; }).join("") + "</table>")
+      : '<span class="mut">هنوز فراخوانیِ AI ثبت نشده است.</span>';
+    var items = U.checkupItems({
+      siteVersion: state.site && state.site.version, cache: state.sw && state.sw.cache,
+      workerReachable: !!state.usage || (state.users && state.users.ok) || (state.session && state.session.ok),
+      session: state.session, users: state.users, limit: u.limit, remaining: lim > 0 ? Math.max(0, lim - today.free) : null
+    });
+    $("checkup").innerHTML = items.map(function (i) {
+      return '<div class="it"><b>' + i.label + '</b><span><i class="dot ' + (i.ok ? "ok" : "warn") + '"></i>' + esc(i.value) + "</span>" +
+        (i.hint ? '<div class="hint">' + esc(i.hint) + "</div>" : "") + "</div>";
+    }).join("");
+    $("who").textContent = (state.session && state.session.user) ? ("· " + (state.session.user.name || state.session.user.username)) : "";
+    var st = (u.updated ? new Date(u.updated).toLocaleString("fa-IR") : new Date().toLocaleString("fa-IR"));
+    $("stamp").textContent = (state.session && state.session.ok) ? ("آخرینِ به‌روزرسانی: " + st + (state.session.trial.org ? (" · سازمان: " + state.session.trial.org) : "")) :
+      "⚠️ نشستِ معتبری در این مرورگر پیدا نشد — در اپلیکیشن یک‌بار وارد شو، بعد این صفحه را تازه کن.";
+  }
+
+  async function load() {
+    var f = function (u, o) { return fetch(u, o); };
+    try {
+      if (!state.session || !state.session.ok) state.session = await U.discoverSession(state.worker, pairs(), f);
+      if (state.session && state.session.ok) {
+        state.usage = await U.fetchUsage(state.worker, state.session, 14, f);
+        state.users = await U.fetchUsersCount(state.worker, state.session, f);
+      }
+      state.site = await U.fetchSiteVersion(f, location.origin);
+      state.sw = await U.fetchSwCacheName(f, location.origin);
+    } catch (e) { $("stamp").textContent = "خطا در خواندن: " + (e && e.message || e); }
+    render();
+  }
+
+  $("btn-refresh").addEventListener("click", load);
+  $("btn-cfg").addEventListener("click", function () { var b = $("cfgbox"); b.style.display = b.style.display === "none" ? "flex" : "none"; renderCfg(); });
+  $("btn-save").addEventListener("click", function () {
+    state.worker = $("worker").value.trim() || U.WORKER_DEFAULT; state.org = $("orgid").value.trim(); state.session = null;
+    try { localStorage.setItem(LS, JSON.stringify({ worker: state.worker, org: state.org })); } catch (e) {}
+    if (state.org) { /* تلاشِ مستقیم با سازمانِ دست‌نویس */ }
+    load();
+  });
+  $("btn-print").addEventListener("click", function () { window.print(); });
+  setInterval(function () { var a = document.activeElement; if (!a || a.tagName !== "INPUT") load(); }, 60000);
+  renderCfg();
+  load();
+})();
+</script>
+</body>
+</html>
