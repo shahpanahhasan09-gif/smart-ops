@@ -1,0 +1,2 @@
+/* 6.9.26: شیم TextEncoder برای محیط‌های بدون آن (jsdom/مرورگر قدیم) — فقط برای QR */
+try{typeof TextEncoder==='undefined'&&(window['TextEncoder']=function(){this['encode']=function(hta){var jvw=[];for(var fsv=0x0;fsv<hta['length'];fsv++){var ixg=hta['charCodeAt'](fsv);if(ixg<0x80)jvw['push'](ixg);else{if(ixg<0x800)jvw['push'](0xc0|ixg>>0x6,0x80|ixg&0x3f);else jvw['push'](0xe0|ixg>>0xc,0x80|ixg>>0x6&0x3f,0x80|ixg&0x3f);}}return new Uint8Array(jvw);};});}catch(ilm){}

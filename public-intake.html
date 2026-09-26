@@ -31,7 +31,7 @@
     <div id="form-status" class="status" style="margin-top:10px"></div>
   </section>
   <section id="result-card" class="card hidden"><h2 style="font-size:15px;margin:0 0 8px;color:#1e3a5f">✅ درخواست شما ثبت شد</h2><div class="muted">این کد را نگه دارید؛ برای دیدن وضعیت فقط همین کد لازم است.</div><div id="new-code" class="code"></div><button id="new-request" class="btn secondary" type="button" style="width:100%">ثبت درخواست دیگر</button></section>
-  <section class="card"><h2 style="font-size:14px;margin:0 0 8px;color:#1e3a5f">🔍 پیگیری درخواست</h2><div class="muted">فقط وضعیت درخواستِ دارای این کد نمایش داده می‌شود؛ اطلاعات شهروندان دیگر قابل مشاهده نیست.</div><div class="row" style="margin-top:8px"><input id="track-code" class="input" maxlength="40" placeholder="مثلاً PI-14050628-AB12"><button id="track" class="btn success" type="button">پیگیری</button></div><div id="track-status" class="status" style="margin-top:10px"></div></section>
+  <section class="card"><h2 style="font-size:14px;margin:0 0 8px;color:#1e3a5f">🔍 پیگیری درخواست</h2><div class="muted">فقط وضعیت درخواستِ دارای این کد نمایش داده می‌شود؛ اطلاعات شهروندان دیگر قابل مشاهده نیست.</div><div class="row" style="margin-top:8px"><input id="track-code" class="input" maxlength="40" placeholder="مثلاً PI-14050628-AB12"><button id="track" class="btn success" type="button">پیگیری</button></div><div id="track-status" class="status" style="margin-top:10px"></div><div id="rate-box" style="margin-top:10px"></div></section>
   <div class="muted" style="text-align:center">سامانهٔ مدیریت هوشمند عملیات · دریافت عمومیِ کنترل‌شده · نسخهٔ 6.9.68</div>
 </main>
 <script>
@@ -51,7 +51,34 @@
   $("reset").onclick=function(){$("form-card").querySelectorAll("input,textarea").forEach(function(x){if(x.id!=="photos"&&x.id!=="website")x.value="";});photos=[];locationValue="";renderPhotos();$("loc-note").textContent="بدون اجازهٔ شما موقعیت ثبت نمی‌شود.";$("form-status").className="status";};
   $("new-request").onclick=function(){$("result-card").classList.add("hidden");$("form-card").classList.remove("hidden");};
   $("submit").onclick=function(){var subject=$("subject").value.trim(),desc=$("description").value.trim(),st=$("form-status");if(!subject||!desc){msg(st,"موضوع و شرح کامل الزامی است.","err");return;}if($("website").value){msg(st,"ارسال انجام نشد.","err");return;}var payload={recipient:($("recipient")?$("recipient").value:"manager"),subject:subject,region:$("region").value.trim(),address:$("address").value.trim(),description:desc,name:$("name").value.trim(),phone:$("phone").value.trim(),photos:photos.slice(0,3),location:locationValue,website:""};var b=$("submit");b.disabled=true;b.textContent="در حال ارسال…";fetch(API+"/public/intake",{method:"POST",headers:headers(),body:JSON.stringify(payload)}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(x){b.disabled=false;b.textContent="✅ ارسال درخواست";if(!x.ok)throw new Error(x.j&&x.j.message||"ارسال انجام نشد");$("new-code").textContent=x.j.code;$("form-card").classList.add("hidden");$("result-card").classList.remove("hidden");$("track-code").value=x.j.code;}).catch(function(e){b.disabled=false;b.textContent="✅ ارسال درخواست";msg(st,"⚠️ "+e.message,"err");});};
-  $("track").onclick=function(){var code=digits($("track-code").value.trim()),st=$("track-status");if(!code){msg(st,"کد پیگیری را وارد کنید.","err");return;}fetch(API+"/public/status?code="+encodeURIComponent(code)+(org?"&org="+encodeURIComponent(org):""),{headers:headers()}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(x){if(!x.ok)throw new Error(x.j&&x.j.message||"درخواستی با این کد پیدا نشد");var m={new:"در صف بررسی اولیه",review:"در حال بررسی",approved:"تأیید شده و در نوبت ارجاع",converted:"به درخواست رسمی ارجاع شد",duplicate:"به‌عنوان مورد تکراری بسته شد",irrelevant:"نامرتبط تشخیص داده شد",fake:"نیازمند بررسی بیشتر"};msg(st,"کد "+x.j.code+" — "+(m[x.j.status]||"وضعیت ثبت شد")+" · آخرین تغییر: "+String(x.j.updatedAt||"").slice(0,10),"ok");}).catch(function(e){msg(st,"⚠️ "+e.message,"err");});};
+  function renderRateBox(code,st){
+    var box=$("rate-box");if(!box)return;
+    if(!st||st.status!=="done"){box.innerHTML="";return;}
+    if(st.rated){
+      var filled="★".repeat(st.rating||0)+"☆".repeat(5-(st.rating||0));
+      box.innerHTML='<div class="info status show">سپاس — قبلاً به این کار امتیاز داده‌اید: <span style="color:#d97706;font-size:16px;letter-spacing:2px">'+filled+'</span></div>';
+      return;
+    }
+    var stars="";for(var i=1;i<=5;i++)stars+='<span class="rate-star" data-n="'+i+'" style="cursor:pointer;font-size:26px;color:#cbd5e1;padding:0 2px">☆</span>';
+    box.innerHTML='<div class="card" style="border:1px dashed #93c5fd;background:#f0f9ff"><div class="label" style="margin-top:0">کیفیت این کار را چطور می‌بینید؟</div><div id="rate-stars" dir="ltr" style="text-align:center;margin:6px 0">'+stars+'</div><textarea id="rate-comment" class="textarea" style="min-height:52px" placeholder="نظر شما (اختیاری)"></textarea><button id="rate-submit" class="btn primary" type="button" style="width:100%;margin-top:8px" disabled>ثبت امتیاز</button></div>';
+    var chosen=0;
+    box.querySelectorAll(".rate-star").forEach(function(s){
+      s.addEventListener("click",function(){
+        chosen=parseInt(this.getAttribute("data-n"),10);
+        box.querySelectorAll(".rate-star").forEach(function(x){x.textContent=parseInt(x.getAttribute("data-n"),10)<=chosen?"★":"☆";x.style.color=parseInt(x.getAttribute("data-n"),10)<=chosen?"#d97706":"#cbd5e1";});
+        $("rate-submit").disabled=false;
+      });
+    });
+    $("rate-submit").onclick=function(){
+      if(!chosen){return;}
+      var b=$("rate-submit");b.disabled=true;b.textContent="در حال ثبت…";
+      fetch(API+"/public/rate",{method:"POST",headers:headers(),body:JSON.stringify({code:code,stars:chosen,comment:$("rate-comment").value.trim()})}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(x){
+        if(!x.ok)throw new Error(x.j&&x.j.message||"ثبت امتیاز انجام نشد");
+        box.innerHTML='<div class="info status show">🙏 سپاس از ثبت امتیاز شما.</div>';
+      }).catch(function(e){b.disabled=false;b.textContent="ثبت امتیاز";msg($("track-status"),"⚠️ "+e.message,"err");});
+    };
+  }
+  $("track").onclick=function(){var code=digits($("track-code").value.trim()),st=$("track-status");if(!code){msg(st,"کد پیگیری را وارد کنید.","err");return;}fetch(API+"/public/status?code="+encodeURIComponent(code)+(org?"&org="+encodeURIComponent(org):""),{headers:headers()}).then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});}).then(function(x){if(!x.ok)throw new Error(x.j&&x.j.message||"درخواستی با این کد پیدا نشد");var m={new:"در صف بررسی اولیه",review:"در حال بررسی",approved:"تأیید شده و در نوبت ارجاع",converted:"به درخواست رسمی ارجاع شد",done:"✅ کار انجام شد",duplicate:"به‌عنوان مورد تکراری بسته شد",irrelevant:"نامرتبط تشخیص داده شد",fake:"نیازمند بررسی بیشتر"};msg(st,"کد "+x.j.code+" — "+(m[x.j.status]||"وضعیت ثبت شد")+" · آخرین تغییر: "+String(x.j.updatedAt||"").slice(0,10),"ok");renderRateBox(x.j.code,x.j);}).catch(function(e){$("rate-box").innerHTML="";msg(st,"⚠️ "+e.message,"err");});};
 })();
 </script>
 </body></html>

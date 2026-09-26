@@ -1,0 +1,1 @@
+console.log('jsPDF 2.5.1 loaded via CDN (ES5 compatible)');
